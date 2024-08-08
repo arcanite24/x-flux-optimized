@@ -121,7 +121,9 @@ def main():
     clip.requires_grad_(False)
 
     # Load VAE and DiT models
-    vae = load_ae(name=args.model_name, device="cpu" if offload else accelerator.device)
+    vae = load_ae(
+        name=args.model_name, device="cpu" if offload else accelerator.device
+    ).to(accelerator.device)
     dit = load_flow_model2(name=args.model_name, device="cpu")
 
     lora_attn_procs = {}
@@ -175,13 +177,13 @@ def main():
     # Compute embeddings before the training loop
     embeddings = []
     for step, batch in enumerate(train_dataloader):
-        img, prompts = batch
-        with torch.no_grad():
-            x_1 = vae.encode(
-                img.to(accelerator.device).to(torch.float32)
-            )  # Ensure img is on the same device as vae
-            inp = prepare(t5=t5, clip=clip, img=x_1, prompt=prompts)
-            embeddings.append((x_1, inp))
+    img, prompts = batch
+    with torch.no_grad():
+        x_1 = vae.encode(
+            img.to(accelerator.device).to(torch.float32)  # Ensure img is on the same device as vae
+        )
+        inp = prepare(t5=t5, clip=clip, img=x_1, prompt=prompts)
+        embeddings.append((x_1, inp))
 
     # Unload T5 and CLIP
     t5.cpu()
