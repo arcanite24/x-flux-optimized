@@ -177,7 +177,9 @@ def main():
     for step, batch in enumerate(train_dataloader):
         img, prompts = batch
         with torch.no_grad():
-            x_1 = vae.encode(img.to(accelerator.device).to(torch.float32))
+            x_1 = vae.encode(
+                img.to(accelerator.device).to(torch.float32)
+            )  # Ensure img is on the same device as vae
             inp = prepare(t5=t5, clip=clip, img=x_1, prompt=prompts)
             embeddings.append((x_1, inp))
 
