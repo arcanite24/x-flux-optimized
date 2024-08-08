@@ -78,7 +78,6 @@ def parse_args():
 
 
 def main():
-
     args = OmegaConf.load(parse_args())
     is_schnell = args.model_name == "flux-schnell"
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
@@ -86,6 +85,8 @@ def main():
     accelerator_project_config = ProjectConfiguration(
         project_dir=args.output_dir, logging_dir=logging_dir
     )
+
+    offload = True
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -114,17 +115,18 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-    dit, vae, t5, clip = get_models(
-        name=args.model_name,
-        device=accelerator.device,
-        offload=False,
-        is_schnell=is_schnell,
-    )
-    lora_attn_procs = {}
+    # Load T5 and CLIP into GPU
+    t5 = load_t5(accelerator.device, max_length=256 if is_schnell else 512)
+    clip = load_clip(accelerator.device)
+    clip.requires_grad_(False)
 
+    # Load VAE and DiT models
+    vae = load_ae(name=args.model_name, device="cpu" if offload else accelerator.device)
+    dit = load_flow_model2(name=args.model_name, device="cpu")
+
+    lora_attn_procs = {}
     for name, attn_processor in dit.attn_processors.items():
         lora_attn_procs[name] = DoubleStreamBlockLoraProcessor(dim=3072, rank=args.rank)
-
     dit.set_attn_processor(lora_attn_procs)
 
     vae.requires_grad_(False)
@@ -132,6 +134,7 @@ def main():
     clip.requires_grad_(False)
     dit = dit.to(torch.float32)
     dit.train()
+
     optimizer_cls = torch.optim.AdamW
     for n, param in dit.named_parameters():
         if "_lora" not in n:
